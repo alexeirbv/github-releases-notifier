@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -14,14 +16,19 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// Repos from JSON file
+type Repositories struct {
+	Names []string `json:"repos"`
+}
+
 // Config of env and args
 type Config struct {
 	GithubToken     string        `arg:"env:GITHUB_TOKEN"`
 	Interval        time.Duration `arg:"env:INTERVAL"`
 	LogLevel        string        `arg:"env:LOG_LEVEL"`
-	Repositories    []string      `arg:"-r,separate"`
 	SlackHook       string        `arg:"env:SLACK_HOOK"`
 	IgnoreNonstable bool          `arg:"env:IGNORE_NONSTABLE"`
+	ReposFilePath   string        `arg:"env:REPOS_FILE_PATH"`
 }
 
 // Token returns an oauth2 token or an error.
@@ -56,8 +63,28 @@ func main() {
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}
 
-	if len(c.Repositories) == 0 {
-		level.Error(logger).Log("msg", "no repositories wo watch")
+	// Reading repos from JSON file
+	var repos Repositories
+
+	jsonFromFile, err := os.Open(c.ReposFilePath)
+
+	if err != nil {
+		level.Error(logger).Log("Can't load JSON file at path:", c.ReposFilePath)
+		os.Exit(1)
+	}
+	defer jsonFromFile.Close()
+
+	content, err := ioutil.ReadAll(jsonFromFile)
+
+	if err != nil {
+		level.Error(logger).Log(err)
+		os.Exit(1)
+	}
+
+	err = json.Unmarshal(content, &repos)
+
+	if err != nil {
+		level.Error(logger).Log(err)
 		os.Exit(1)
 	}
 
@@ -70,7 +97,7 @@ func main() {
 
 	// TODO: releases := make(chan Repository, len(c.Repositories))
 	releases := make(chan Repository)
-	go checker.Run(c.Interval, c.Repositories, releases)
+	go checker.Run(c.Interval, repos.Names, releases)
 
 	slack := SlackSender{Hook: c.SlackHook}
 
