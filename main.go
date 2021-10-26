@@ -71,32 +71,32 @@ func main() {
 	default:
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}
-
-	// Reading repos from JSON file
 	var repos Repositories
 
-	jsonFromFile, err := os.Open(c.ReposFilePath)
+	if c.ReposFilePath != "" {
+		// Reading repos from JSON file
+		jsonFromFile, err := os.Open(c.ReposFilePath)
 
-	if err != nil {
-		level.Error(logger).Log("Can't load JSON file at path:", c.ReposFilePath)
-		os.Exit(1)
+		if err != nil {
+			level.Error(logger).Log("Can't load JSON file at path:", c.ReposFilePath)
+			os.Exit(1)
+		}
+		defer jsonFromFile.Close()
+
+		content, err := ioutil.ReadAll(jsonFromFile)
+
+		if err != nil {
+			level.Error(logger).Log(err)
+			os.Exit(1)
+		}
+
+		err = json.Unmarshal(content, &repos)
+
+		if err != nil {
+			level.Error(logger).Log(err)
+			os.Exit(1)
+		}
 	}
-	defer jsonFromFile.Close()
-
-	content, err := ioutil.ReadAll(jsonFromFile)
-
-	if err != nil {
-		level.Error(logger).Log(err)
-		os.Exit(1)
-	}
-
-	err = json.Unmarshal(content, &repos)
-
-	if err != nil {
-		level.Error(logger).Log(err)
-		os.Exit(1)
-	}
-
 	if len(c.Repositories) == 0 && len(repos.Names) == 0 {
 		level.Error(logger).Log("msg", "no repositories to watch")
 		os.Exit(1)
