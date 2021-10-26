@@ -32,6 +32,7 @@ func (c *Checker) Run(interval time.Duration, repositories []string, releases ch
 
 			nextRepo, err := c.query(owner, name)
 			if err != nil {
+				metricGithubQueriesErrorCounter.WithLabelValues(repoName).Inc()
 				level.Warn(c.logger).Log(
 					"msg", "failed to query the repository's releases",
 					"owner", owner,

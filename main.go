@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	githubql "github.com/shurcooL/githubql"
 	"golang.org/x/oauth2"
 )
@@ -28,7 +31,9 @@ type Config struct {
 	LogLevel        string        `arg:"env:LOG_LEVEL"`
 	SlackHook       string        `arg:"env:SLACK_HOOK"`
 	IgnoreNonstable bool          `arg:"env:IGNORE_NONSTABLE"`
+	Repositories    []string      `arg:"-r,separate"`
 	ReposFilePath   string        `arg:"env:REPOS_FILE_PATH"`
+	MetricsPort     int           `arg:"env:METRICS_PORT"`
 }
 
 // Token returns an oauth2 token or an error.
@@ -44,6 +49,10 @@ func main() {
 		LogLevel: "info",
 	}
 	arg.MustParse(&c)
+
+	if c.MetricsPort == 0 {
+		c.MetricsPort = 8080
+	}
 
 	logger := log.NewJSONLogger(log.NewSyncWriter(os.Stdout))
 	logger = log.With(logger,
@@ -88,6 +97,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if len(c.Repositories) == 0 && len(repos.Names) == 0 {
+		level.Error(logger).Log("msg", "no repositories to watch")
+		os.Exit(1)
+	}
+
 	tokenSource := oauth2.StaticTokenSource(c.Token())
 	client := oauth2.NewClient(context.Background(), tokenSource)
 	checker := &Checker{
@@ -95,9 +109,14 @@ func main() {
 		client: githubql.NewClient(client),
 	}
 
+	level.Info(logger).Log("msg", "Starting Prometheus metrics handler", "port", c.MetricsPort)
+
+	http.Handle("/metrics", promhttp.Handler())
+	go http.ListenAndServe(fmt.Sprintf(":%d", c.MetricsPort), nil)
+
 	// TODO: releases := make(chan Repository, len(c.Repositories))
 	releases := make(chan Repository)
-	go checker.Run(c.Interval, repos.Names, releases)
+	go checker.Run(c.Interval, append(repos.Names, c.Repositories...), releases)
 
 	slack := SlackSender{Hook: c.SlackHook}
 
@@ -108,6 +127,7 @@ func main() {
 			continue
 		}
 		if err := slack.Send(repository); err != nil {
+			metricSlackSendErrorCounter.Inc()
 			level.Warn(logger).Log(
 				"msg", "failed to send release to messenger",
 				"err", err,
