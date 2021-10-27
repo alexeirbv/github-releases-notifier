@@ -7,7 +7,7 @@ import (
 
 var metricGithubQueriesErrorCounter = promauto.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "github_queries_count",
+		Name: "github_queries_error_count",
 		Help: "Github queires errors count",
 	},
 	[]string{"repo"},
