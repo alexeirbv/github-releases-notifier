@@ -27,7 +27,7 @@ func (s *SlackSender) Send(repository Repository) error {
 		Username:  "GitHub Releases",
 		IconEmoji: ":github:",
 		Text: fmt.Sprintf(
-			"<%s|%s/%s>: <%s|%s> released",
+			"```<%s|%s/%s>: <%s|%s> released```",
 			repository.URL.String(),
 			repository.Owner,
 			repository.Name,
